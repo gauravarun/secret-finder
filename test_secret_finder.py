@@ -29,10 +29,19 @@ class DiffParsingTests(unittest.TestCase):
             f"+AWS_ACCESS_KEY_ID = '{FAKE_AWS_ID}'\n"  # new line 11
             " TIMEOUT = 30\n"                          # line 12
             f"+db_password = \"{FAKE_PASSWORD}\"\n"    # line 13
+            # Unquoted values in config files are caught too.
+            "diff --git a/.env b/.env\n"
+            "+++ b/.env\n"
+            "@@ -0,0 +1,3 @@\n"
+            "+DEBUG=true\n"
+            f"+DB_PASSWORD={FAKE_PASSWORD}\n"          # line 2
+            f"+export API_TOKEN={FAKE_PASSWORD}9\n"    # line 3
         )
         findings = scan_diff(diff)
         got = sorted((f.file, f.line, f.rule) for f in findings)
         self.assertEqual(got, [
+            (".env", 2, "hardcoded-secret"),
+            (".env", 3, "hardcoded-secret"),
             ("config.py", 11, "aws-access-key-id"),
             ("config.py", 13, "hardcoded-secret"),
         ])
@@ -51,6 +60,13 @@ class DiffParsingTests(unittest.TestCase):
             "+secret: \"<your-secret-here>\"\n"
             "+db_url: \"postgres://user:${DB_PASS}@localhost/db\"\n"
             f"+fixture_token = \"{FAKE_PASSWORD}\"  # secret-finder:ignore\n"
+            "+auth: oauth_only\n"
+            "+db_password: ${DB_PASSWORD}\n"
+            # Unquoted right-hand sides in source code are variables, not secrets.
+            "+++ b/app.py\n"
+            "@@ -0,0 +1,2 @@\n"
+            "+api_token = load_token_from_vault(Config.REGION2)\n"
+            "+password = settings.DB_PASSWORD_V2\n"
         )
         self.assertEqual(scan_diff(diff), [])
 

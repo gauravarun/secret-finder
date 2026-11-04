@@ -17,6 +17,7 @@ Rules: start from scratch, CLI only, any language, README (how to run, where it 
 - Fake secrets in the tests are built from pieces so GitHub push protection doesn't block the repo.
 - Tested end to end on a real temporary git repo (`--commit`); working-directory and stdin modes were also run by hand.
 - Ran the tool on its own repo; it flagged 2 false positives (`user:pass@host` in the README, an f-string `{name}` in the tests), so both were added to the placeholder filter.
+- Added unquoted `KEY=value` detection (the biggest gap: `.env` files), limited to config-style files so variables in source code aren't flagged.
 
 ## Reviewed by me
 I read and ran the code and tests myself and can explain each part: diff parsing, the detection rules, and the known limits listed in the README.

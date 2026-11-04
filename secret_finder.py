@@ -57,14 +57,30 @@ PATTERNS: list[tuple[str, re.Pattern, str]] = [
      "Credentials embedded in a URL"),
 ]
 
+SENSITIVE_KEY = (r"[\w.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key"
+                 r"|private[_-]?key|auth|credential)[\w.-]*")
+
 # key = "value" style assignments where the key name looks sensitive.
 ASSIGNMENT = re.compile(
     r"""(?ix)
-    (?P<key>[\w.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|auth|credential)[\w.-]*)
+    (?P<key>""" + SENSITIVE_KEY + r""")
     ['"]?\s*(?::=|=>|=|:)\s*
     (?P<q>['"`])(?P<value>[^'"`]+)(?P=q)
     """
 )
+
+# KEY=value / key: value with no quotes. Only used for config-style files:
+# in source code an unquoted right-hand side is usually a variable or call.
+UNQUOTED_ASSIGNMENT = re.compile(
+    r"""(?ix)
+    ^\s*(?:export\s+)?(?:-\s+)?
+    (?P<key>""" + SENSITIVE_KEY + r""")
+    \s*[=:]\s*
+    (?P<value>[^\s'"`\#]+)
+    \s*(?:\#.*)?$
+    """
+)
+CONFIG_FILE = re.compile(r"(?i)(?:^|/)\.env(?:\.[\w.-]+)?$|\.(?:env|properties|ini|cfg|conf|ya?ml|toml)$")
 
 PLACEHOLDER = re.compile(
     r"(?ix)^(?: \$\{.*\} | \$[A-Z_]+ | <.*> | \{\{.*\}\} | \{[\w.]+\} | %\(.*\)s"
@@ -106,7 +122,14 @@ def scan_line(path: str, lineno: int, text: str) -> list[Finding]:
             seen_spans.append(m.span())
             findings.append(Finding(path, lineno, rule, reason, mask(text, secret)))
 
-    for m in ASSIGNMENT.finditer(text):
+    matches = list(ASSIGNMENT.finditer(text))
+    if CONFIG_FILE.search(path):
+        m = UNQUOTED_ASSIGNMENT.match(text)
+        # All-lowercase words like "enabled" or "oauth_only" are settings, not secrets.
+        if m and not re.fullmatch(r"[a-z_.-]+", m.group("value")):
+            matches.append(m)
+
+    for m in matches:
         value = m.group("value").strip()
         if any(s <= m.start("value") < e for s, e in seen_spans):
             continue  # already reported by a specific rule

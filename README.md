@@ -42,8 +42,8 @@ Add `secret-finder:ignore` anywhere on a line to skip it.
 python -m unittest -v
 ```
 
-1. Diff parsing: correct file and new-file line numbers; removed lines are not reported; output is masked.
-2. False positives: placeholders (`changeme`, `${VAR}`, `<your-key>`), env lookups and ignore markers are not reported.
+1. Diff parsing: correct file and new-file line numbers across two files; removed lines are not reported; unquoted `.env` values are found; output is masked.
+2. False positives: placeholders (`changeme`, `${VAR}`, `<your-key>`), env lookups, ignore markers, plain config words, and unquoted variables in source code are not reported.
 3. End to end: creates a temp git repo, commits a token, and checks `--commit HEAD` finds it and `HEAD~1` is clean.
 
 ## How it works
@@ -53,11 +53,12 @@ python -m unittest -v
 3. Check each line against:
    - **Known token formats**: private key headers, AWS key IDs/secrets, GitHub, Slack, Stripe, Google, OpenAI-style keys, JWTs, `scheme://user:pass@host` URLs.
    - **Suspicious assignments**: a key name like `password`, `secret`, `token`, `api_key` assigned a quoted value that is at least 8 chars, not a known placeholder, and has Shannon entropy ≥ 3.0.
+   - **Unquoted config values**: the same check for `KEY=value` / `key: value` without quotes, but only in config-style files (`.env`, `.yml`, `.ini`, `.properties`, `.toml`, `.cfg`, `.conf`). In source code an unquoted right-hand side is usually a variable, so it is skipped there.
 
 ## Where it fails
 
 - **Regex + heuristics, not proof.** Unknown token formats are only caught if they are assigned to a suspicious-looking name.
-- **False negatives:** unquoted values (`PASSWORD=hunter2` in `.env`), short or low-entropy passwords (`password = "summer2024"` passes the entropy bar only sometimes), secrets split across lines or built by string concatenation, base64/encoded secrets, and secrets in variables with innocent names (`x = "..."`).
+- **False negatives:** unquoted values outside the listed config file types (e.g. `ENV PASSWORD=...` in a `Dockerfile`), short or low-entropy passwords (`password = "summer2024"` passes the entropy bar only sometimes), secrets split across lines or built by string concatenation, base64/encoded secrets, and secrets in variables with innocent names (`x = "..."`).
 - **False positives:** long random-looking test fixtures, hashes or IDs assigned to names containing `token`/`auth`. Use `secret-finder:ignore`.
 - **Only added lines in the change are scanned.** Secrets already in history, or in unchanged context lines, are not reported. Use `--commit` on each commit (or a full-history tool like gitleaks/trufflehog) for that.
 - **Binary files** and non-UTF-8 untracked files are skipped.
